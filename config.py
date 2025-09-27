@@ -1,3 +1,4 @@
 # YOLO class groups
-RECYCLABLE = {"bottle", "cup", "can", "wine glass", "cardboard"}
-NON_RECYCLABLE = set()  # fallback (everything else)
+RECYCLABLE = {"cardboard", "glass", "metal", "paper", "plastic"}
+NON_RECYCLABLE = {"trash"}
+ # fallback (everything else)
