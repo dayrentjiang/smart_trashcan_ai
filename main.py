@@ -1,36 +1,72 @@
 import cv2
+import time
+from collections import Counter
 from ai.detector import TrashDetector
+from ai.classifier import Classifier
+from hardware.controller import ArduinoController
 
-detector = TrashDetector()
+NUM_SNAPSHOTS = 5
+CAPTURE_DELAY = 0.1
+CONF_THRESHOLD = 0.3
 
-cap = cv2.VideoCapture(0)
+def decide_from_snapshots(detector, classifier, cap):
+    decisions = []
+    for i in range(NUM_SNAPSHOTS):
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        detections = detector.detect(frame)
+        decision = classifier.decide(detections)
+        decisions.append(decision)
+        time.sleep(CAPTURE_DELAY)
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+    if not decisions:
+        return "TRASH"
 
-    decision, results, detections = detector.detect(frame)
+    if "trash" in decisions:
+        return "TRASH"
 
-    annotated = frame.copy()
+    c = Counter(decisions)
+    top = c.most_common()
+    if len(top) == 1 or top[0][1] > top[1][1]:
+        return top[0][0].upper()
+    else:
+        return top[0][0].upper()
 
-    # Draw detection boxes
-    for det in detections:
-        x1, y1, x2, y2 = det["xyxy"]
-        text = f"{det['label']} {det['conf']:.2f}"
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 255, 255), 2)
-        cv2.putText(annotated, text, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+def main():
+    detector = TrashDetector("best.pt", conf_threshold=CONF_THRESHOLD)
+    classifier = Classifier()
+    arduino = ArduinoController()
 
-    # Big banner with final decision
-    banner_color = (0, 255, 0) if decision == "recyclable" else (0, 0, 255)
-    cv2.putText(annotated, decision.upper(), (30, 50),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.2, banner_color, 3)
+    cap = cv2.VideoCapture(0)
 
-    cv2.imshow("Smart Trashcan AI (Prep Mode)", annotated)
+    while True:
+        # 🔹 Wait for Arduino IR/button
+        msg = arduino.read_line()
+        if msg != "READY":
+            continue
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        print("[INFO] Trigger received → capturing snapshots...")
 
-cap.release()
-cv2.destroyAllWindows()
+        decision = decide_from_snapshots(detector, classifier, cap)
+
+        # Show preview frame with decision
+        ret, frame = cap.read()
+        if ret:
+            cv2.putText(frame, decision, (30, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2,
+                        (0,255,0) if decision!="TRASH" else (0,0,255), 3)
+            cv2.imshow("Smart Trashcan", frame)
+
+        # 🔹 Send decision back to Arduino
+        arduino.send(decision)
+
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+    arduino.close()
+
+if __name__ == "__main__":
+    main()
