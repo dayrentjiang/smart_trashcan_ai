@@ -36,37 +36,34 @@ def decide_from_snapshots(detector, classifier, cap):
 def main():
     detector = TrashDetector("best.pt", conf_threshold=CONF_THRESHOLD)
     classifier = Classifier()
-    arduino = ArduinoController()
+    arduino = ArduinoController(port="/dev/cu.usbserial-1110")
 
     cap = cv2.VideoCapture(0)
+    print("[INFO] Camera opened. Press ENTER to capture or Q to quit.")
 
     while True:
-        # 🔹 Wait for Arduino IR/button
-        msg = arduino.read_line()
-        if msg != "READY":
-            continue
+        key = input("[ACTION] Press ENTER to simulate detection, or 'q' to quit: ")
+        if key.lower() == "q":
+            break
 
-        print("[INFO] Trigger received → capturing snapshots...")
-
+        print("[INFO] Starting 5-frame capture...")
         decision = decide_from_snapshots(detector, classifier, cap)
 
-        # Show preview frame with decision
+        # show preview frame with decision
         ret, frame = cap.read()
         if ret:
             cv2.putText(frame, decision, (30, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.2,
                         (0,255,0) if decision!="TRASH" else (0,0,255), 3)
             cv2.imshow("Smart Trashcan", frame)
+            cv2.waitKey(1)
 
-        # 🔹 Send decision back to Arduino
         arduino.send(decision)
-
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
 
     cap.release()
     cv2.destroyAllWindows()
     arduino.close()
+
 
 if __name__ == "__main__":
     main()

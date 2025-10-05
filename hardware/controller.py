@@ -1,37 +1,42 @@
+import serial
 import time
-# import serial   # enable later on Pi with Nano
-from config import SERIAL_PORT, BAUD_RATE
 
 class ArduinoController:
-    def __init__(self):
-        # try:
-        #     self.ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        #     time.sleep(2)
-        #     print("[INFO] Connected to Arduino on", SERIAL_PORT)
-        # except Exception as e:
-        #     print("[DUMMY] Running in dummy mode:", e)
+    def __init__(self, port="/dev/cu.usbserial-1110", baud=9600, dummy=False):
+        self.dummy = dummy
         self.ser = None
 
+        if not self.dummy:
+            try:
+                self.ser = serial.Serial(port, baud, timeout=1)
+                time.sleep(2)
+                print(f"[INFO] Connected to Arduino on {port}")
+            except Exception as e:
+                print(f"[ERROR] Could not connect to Arduino: {e}")
+                self.dummy = True
+        else:
+            print("[DUMMY] Running without Arduino connection")
+
     def send(self, command: str):
-        msg = command.strip() + "\n"
+        msg = command.strip().upper() + "\n"
         if self.ser:
             self.ser.write(msg.encode("utf-8"))
-            print(f"[INFO] Sent to Arduino: {command}")
+            print(f"[TO ARDUINO] Sent: {command}")
+
+            # read back any Arduino logs for a short time
+            time.sleep(0.1)
+            while self.ser.in_waiting:
+                log = self.ser.readline().decode("utf-8", errors="ignore").strip()
+                if log:
+                    print(f"[FROM ARDUINO] {log}")
         else:
-            print(f"[DUMMY] Would send to Arduino: {command}")
+            print(f"[DUMMY] Would send: {command}")
 
     def read_line(self):
-        if self.ser:
-            if self.ser.in_waiting > 0:
-                return self.ser.readline().decode("utf-8").strip()
-            return None
-        else:
-            input("[DUMMY] Press ENTER to simulate IR trigger...")
-            return "READY"
+        # For now, we skip waiting for READY since no button
+        return "READY"
 
     def close(self):
         if self.ser:
             self.ser.close()
-            print("[INFO] Arduino connection closed")
-        else:
-            print("[DUMMY] Closing dummy controller.")
+            print("[INFO] Closed Arduino serial port")
