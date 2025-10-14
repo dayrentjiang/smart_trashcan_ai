@@ -11,7 +11,7 @@ CONF_THRESHOLD = 0.3
 
 def decide_from_snapshots(detector, classifier, cap):
     decisions = []
-    for i in range(NUM_SNAPSHOTS):
+    for _ in range(NUM_SNAPSHOTS):
         ret, frame = cap.read()
         if not ret:
             continue
@@ -23,15 +23,8 @@ def decide_from_snapshots(detector, classifier, cap):
     if not decisions:
         return "TRASH"
 
-    if "trash" in decisions:
-        return "TRASH"
-
-    c = Counter(decisions)
-    top = c.most_common()
-    if len(top) == 1 or top[0][1] > top[1][1]:
-        return top[0][0].upper()
-    else:
-        return top[0][0].upper()
+    top = Counter(decisions).most_common(1)[0][0]
+    return top.upper()
 
 def main():
     detector = TrashDetector("best.pt", conf_threshold=CONF_THRESHOLD)
@@ -39,31 +32,36 @@ def main():
     arduino = ArduinoController(port="/dev/cu.usbserial-1110")
 
     cap = cv2.VideoCapture(0)
-    print("[INFO] Camera opened. Press ENTER to capture or Q to quit.")
+    print("[INFO] Camera opened. Waiting for IR sensor trigger...")
 
-    while True:
-        key = input("[ACTION] Press ENTER to simulate detection, or 'q' to quit: ")
-        if key.lower() == "q":
-            break
+    try:
+        while True:
+            line = arduino.read_line()
+            if not line:
+                time.sleep(0.05)
+                continue  # wait for Arduino trigger
 
-        print("[INFO] Starting 5-frame capture...")
-        decision = decide_from_snapshots(detector, classifier, cap)
+            if line == "READY":
+                print("[INFO] Object detected — capturing frames...")
+                decision = decide_from_snapshots(detector, classifier, cap)
 
-        # show preview frame with decision
-        ret, frame = cap.read()
-        if ret:
-            cv2.putText(frame, decision, (30, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.2,
-                        (0,255,0) if decision!="TRASH" else (0,0,255), 3)
-            cv2.imshow("Smart Trashcan", frame)
-            cv2.waitKey(1)
+                ret, frame = cap.read()
+                if ret:
+                    cv2.putText(frame, decision, (30, 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.2,
+                                (0,255,0) if decision!="TRASH" else (0,0,255), 3)
+                    cv2.imshow("Smart Trashcan", frame)
+                    cv2.waitKey(1)
 
-        arduino.send(decision)
+                arduino.send(decision)
 
-    cap.release()
-    cv2.destroyAllWindows()
-    arduino.close()
+    except KeyboardInterrupt:
+        print("\n[INFO] Exiting program...")
 
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        arduino.close()
 
 if __name__ == "__main__":
     main()
