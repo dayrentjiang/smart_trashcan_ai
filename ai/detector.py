@@ -9,7 +9,7 @@ class TrashDetector:
         results = self.model(frame, verbose=False)
         detections = []
 
-        for r in results:
+        for r in results: 
             for box in r.boxes:
                 conf = float(box.conf[0])
                 if conf < self.conf_threshold:
